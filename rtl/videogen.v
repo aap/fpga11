@@ -10,7 +10,7 @@ module videogen(
 	input wire [4:0] topline,
 	input wire invert,
 	output wire [10:0] screenmem_addr,
-	input wire [7:0] screenmem_data,
+	input wire [6:0] screenmem_data,
 
 	output wire hsync, vsync,
 	output wire dataEnable,
@@ -62,16 +62,12 @@ module videogen(
 	reg [4:0] screenY;
 	reg [3:0] charX;
 	reg [4:0] charY;
-	reg [7:0] membuf;
+	reg [6:0] membuf;
 	wire hsync_start = pixelH == 736;
 	wire hsync_mid = pixelH == 760;
 	wire hsync_end = pixelH == 790;
-	initial begin
-//		$readmemh("chars.rom", chars);
-		$readmemh("vt52char.rom", chars);
-	end
+	initial $readmemh("vt52char.rom", chars);
 	wire [10:0] charaddr = {membuf[6:0], charY[3:1]};
-//	wire [9:0] charline = {chars[charaddr], 2'b0} | {chars[charaddr], 1'b0};
 	wire [8:0] charline = charY[4] ? 0 : {1'b0, chars[charaddr], 1'b0};
 	wire fetch = dataEnable && charX==8 || hsync_mid || hsync_end;
 	wire doblink = blinkcnt[4] && (charY[4:1] == 8) && lastX == curX && screenY == curY;

@@ -1,5 +1,7 @@
 `default_nettype none
 
+`define KW11
+
 module pdp11_40(
 	input wire clk,
 	input wire reset,
@@ -43,19 +45,19 @@ module pdp11_40(
 	wire bus_pwr_lo = ~power;
 	wire bus_init;
 	// wire ORed from all masters
-	wire [15:0] bus_d = bus_d_cpu | bus_d_mem | bus_d_m9312 | bus_d_kl11 | bus_d_tu58;
+	wire [15:0] bus_d = bus_d_cpu | bus_d_mem | bus_d_m9312 | bus_d_kl11 | bus_d_kw11 | bus_d_tu58;
 	wire [17:0] bus_addr = bus_addr_cpu | bus_addr_m9312;
 	wire bus_c0 = bus_c0_cpu;
 	wire bus_c1 = bus_c1_cpu;
-	wire bus_bbsy = bus_bbsy_cpu | bus_bbsy_kl11 | bus_bbsy_tu58;
+	wire bus_bbsy = bus_bbsy_cpu | bus_bbsy_kl11 | bus_bbsy_kw11 | bus_bbsy_tu58;
 	wire bus_msyn = bus_msyn_cpu;
-	wire bus_intr = bus_intr_kl11 | bus_intr_tu58;
+	wire bus_intr = bus_intr_kl11 | bus_intr_kw11 | bus_intr_tu58;
 	// wire ORed from all slaves
-	wire [7:4] bus_br = bus_br_kl11 | bus_br_tu58;
+	wire [7:4] bus_br = bus_br_kl11 | bus_br_kw11 | bus_br_tu58;
 	wire bus_npr = 0;
-	wire bus_ssyn = bus_ssyn_cpu | bus_ssyn_mem | bus_ssyn_m9312 | bus_ssyn_kl11 | bus_ssyn_tu58;
-	wire bus_sack = bus_sack_kl11 | bus_sack_tu58;
-	
+	wire bus_ssyn = bus_ssyn_cpu | bus_ssyn_mem | bus_ssyn_m9312 | bus_ssyn_kl11 | bus_ssyn_kw11 | bus_ssyn_tu58;
+	wire bus_sack = bus_sack_kl11 | bus_sack_kw11 | bus_sack_tu58;
+
 
 	wire [15:0] bus_d_mem;
 	wire bus_ssyn_mem;
@@ -90,7 +92,7 @@ module pdp11_40(
 	wire bus_intr_kl11;
 	wire [7:4] bus_br_kl11;
 	wire [7:4] bus_bg_kl11;
-	kl11 #('o777560, 'o60, 9600) kl11(
+	dl11 #('o777560, 'o60, 9600) kl11(
 		.clk(clk),
 		.reset(reset),
 		.bus_init(bus_init),
@@ -117,6 +119,48 @@ module pdp11_40(
 		.TX(cnsl_TX)
 	);
 
+`ifdef KW11
+	wire [15:0] bus_d_kw11;
+	wire bus_ssyn_kw11;
+	wire bus_sack_kw11;
+	wire bus_bbsy_kw11;
+	wire bus_intr_kw11;
+	wire [7:4] bus_br_kw11;
+	wire [7:4] bus_bg_kw11;
+	kw11 #('o777546, 'o100, 60) kw11(
+		.clk(clk),
+		.reset(reset),
+
+		.bus_init(bus_init),
+		.bus_d(bus_d),
+		.bus_addr(bus_addr),
+		.bus_c0(bus_c0),
+		.bus_c1(bus_c1),
+		.bus_bbsy(bus_bbsy),
+		.bus_msyn(bus_msyn),
+		.bus_intr(bus_intr),
+		.bus_br(bus_br_kw11),
+		.bus_ssyn(bus_ssyn),
+		.bus_sack(bus_sack),
+		.bus_bg_in(bus_bg_kl11),
+		.bus_bg_out(bus_bg_kw11),
+
+		.bus_ssyn_out(bus_ssyn_kw11),
+		.bus_sack_out(bus_sack_kw11),
+		.bus_bbsy_out(bus_bbsy_kw11),
+		.bus_intr_out(bus_intr_kw11),
+		.bus_d_out(bus_d_kw11)
+	);
+`else
+	wire [15:0] bus_d_kw11 = 0;
+	wire bus_ssyn_kw11 = 0;
+	wire bus_sack_kw11 = 0;
+	wire bus_bbsy_kw11 = 0;
+	wire bus_intr_kw11 = 0;
+	wire [7:4] bus_br_kw11 = 0;
+	wire [7:4] bus_bg_kw11 = bus_bg_kl11;
+`endif
+
 	wire [15:0] bus_d_tu58;
 	wire bus_ssyn_tu58;
 	wire bus_sack_tu58;
@@ -139,7 +183,7 @@ module pdp11_40(
 		.bus_br(bus_br_tu58),
 		.bus_ssyn(bus_ssyn),
 		.bus_sack(bus_sack),
-		.bus_bg_in(bus_bg_kl11),
+		.bus_bg_in(bus_bg_kw11),
 		.bus_bg_out(bus_bg_tu58),
 
 		.bus_ssyn_out(bus_ssyn_tu58),

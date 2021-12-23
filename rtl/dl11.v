@@ -1,8 +1,6 @@
 /*
- * This is not a real DL11 (yet?)
- * just something like a KL11 with break bit
+ * DL11-W. passes ZDLDI0 but NO line clock included! attach separate KW11-L
  */
-
 module dl11
 #(parameter ADDR='o777560, VEC='o60, BAUD=9600)
 (
@@ -32,6 +30,8 @@ module dl11
 	input wire RX,
 	output wire TX
 );
+	wire rx;
+	syncsignal rxsyn(clk, RX, rx);
 
 	wire select0, select2, select4, select6;
 	wire out_high, out_low, in;
@@ -69,8 +69,8 @@ module dl11
 
 		.vector_bit2(~master_a),
 
-		.int_a(rdr_done),
-		.int_enb_a(rdr_int_enb),
+		.int_a(rcvr_done),
+		.int_enb_a(rcvr_intr_enb),
 		.bg_in_a(bg_in),
 		.bg_out_a(bg_tmp),
 		.master_clear_a(intr_done_a),
@@ -79,8 +79,8 @@ module dl11
 		.start_intr_a(master_a),
 		.intr_done_a(intr_done_a),
 
-		.int_b(pun_ready),
-		.int_enb_b(pun_int_enb),
+		.int_b(xmit_rdy),
+		.int_enb_b(xmit_intr_enb),
 		.bg_in_b(bg_tmp),
 		.bg_out_b(bg_out),
 		.master_clear_b(intr_done_b),
@@ -100,76 +100,101 @@ module dl11
 	assign bus_br[4] = br_a | br_b;
 
 	reg break;
-	wire rdr_active;
-	wire rdr_done;
-	reg rdr_int_enb;
-	wire pun_ready;
-	reg pun_int_enb;
+	reg rcvr_busy;
+	reg rcvr_intr_enb;
+	reg xmit_intr_enb;
 	reg maint;
+	reg rdr_enable;	// fake. only needed for ASR33 i think
 
-	wire rdr_csr_to_bus = select0 & in;
-	wire rdr_buf_to_bus = select2 & in;
-	wire pun_csr_to_bus = select4 & in;
-	wire bus_to_rdr_csr = select0 & out_low;
-	wire bus_to_pun_csr = select4 & out_low;
-	wire bus_to_pun_buf = select6 & out_low;
+	wire rcsr_to_bus = select0 & in;
+	wire rbuf_to_bus = select2 & in;
+	wire xcsr_to_bus = select4 & in;
+	wire bus_to_rcsr = select0 & out_low;
+	wire bus_to_xcsr = select4 & out_low;
+	wire bus_to_xbuf = select6 & out_low;
 
-	wire clk_rdr_csr, clk_pun_csr, clk_pun_buf;
-	edgedet2 rdr_csr_edge(clk, reset, bus_to_rdr_csr, clk_rdr_csr);
-	edgedet2 pun_csr_edge(clk, reset, bus_to_pun_csr, clk_pun_csr);
-	edgedet2 pun_buf_edge(clk, reset, bus_to_pun_buf, clk_pun_buf);
+	wire clk_rcsr, clk_xcsr, clk_xbuf;
+	edgedet2 rcsr_edge(clk, reset, bus_to_rcsr, clk_rcsr);
+	edgedet2 xcsr_edge(clk, reset, bus_to_xcsr, clk_xcsr);
+	edgedet2 xbuf_edge(clk, reset, bus_to_xbuf, clk_xbuf);
 
-	assign bus_d_out[15:12] = 0;
-	assign bus_d_out[11] = rdr_csr_to_bus&rdr_active;
+	wire enb_error = 1;
+
+	assign bus_d_out[15] = rbuf_to_bus&enb_error&error;
+	assign bus_d_out[14] = rbuf_to_bus&enb_error&or_err;
+	assign bus_d_out[13] = rbuf_to_bus&enb_error&fr_err;
+	assign bus_d_out[12] = rbuf_to_bus&enb_error&p_err;
+	assign bus_d_out[11] = rcsr_to_bus&rcvr_busy;
 	assign bus_d_out[10:8] = 0;
-	assign bus_d_out[7] = rdr_buf_to_bus&rd[7] | rdr_csr_to_bus&rdr_done | pun_csr_to_bus&pun_ready | bus_d_vec[7];
-	assign bus_d_out[6] = rdr_buf_to_bus&rd[6] | rdr_csr_to_bus&rdr_int_enb | pun_csr_to_bus&pun_int_enb | bus_d_vec[6];
-	assign bus_d_out[5:3] = (rdr_buf_to_bus ? rd[5:3] : 0) | bus_d_vec[5:3];
-	assign bus_d_out[2] = rdr_buf_to_bus&rd[2] | pun_csr_to_bus&maint | bus_d_vec[2];
-	assign bus_d_out[1] = rdr_buf_to_bus&rd[1];
-	assign bus_d_out[0] = rdr_buf_to_bus&rd[0] | pun_csr_to_bus&break;
+	assign bus_d_out[7] = rbuf_to_bus&rd[7] | rcsr_to_bus&rcvr_done | xcsr_to_bus&xmit_rdy | bus_d_vec[7];
+	assign bus_d_out[6] = rbuf_to_bus&rd[6] | rcsr_to_bus&rcvr_intr_enb | xcsr_to_bus&xmit_intr_enb | bus_d_vec[6];
+	assign bus_d_out[5:3] = {3{rbuf_to_bus}}&rd[5:3] | bus_d_vec[5:3];
+	assign bus_d_out[2] = rbuf_to_bus&rd[2] | xcsr_to_bus&maint | bus_d_vec[2];
+	assign bus_d_out[1] = rbuf_to_bus&rd[1];
+	assign bus_d_out[0] = rbuf_to_bus&rd[0] | xcsr_to_bus&break;
 
 	wire serial_out_raw;
 	wire serial_out = serial_out_raw & ~break;
 	assign TX = serial_out;
-	wire serial_in = maint ? serial_out : RX;
+	wire serial_in = maint ? serial_out : rx;
 	wire [7:0] rd;
 
+	wire init = bus_init | reset;
 	always @(posedge clk) begin
-		if(clk_rdr_csr) begin
-			rdr_int_enb <= bus_d[6];
+		if(clk_rcsr) begin
+			rdr_enable <= bus_d[0];
+			rcvr_intr_enb <= bus_d[6];
 		end
-		if(clk_pun_csr) begin
+		if(clk_xcsr) begin
 			break <= bus_d[0];
 			maint <= bus_d[2];
-			pun_int_enb <= bus_d[6];
+			xmit_intr_enb <= bus_d[6];
 		end
-		if(bus_init) begin
+		// not quite sure about this, but seems reasonable
+		if(uart_clk & ~serial_in)
+			rcvr_busy <= 1;
+		if(init | rcvr_busy)
+			rdr_enable <= 0;
+		if(init | rcvr_done)
+			rcvr_busy <= 0;
+		if(init) begin
 			break <= 0;
-			rdr_int_enb <= 0;
+			rcvr_intr_enb <= 0;
 			maint <= 0;
-			pun_int_enb <= 0;
+			xmit_intr_enb <= 0;
 		end
 	end
 
 	wire uart_clk;
 	clkdiv #(50000000,BAUD*16) clkdivtest(clk, uart_clk);
-        uart uart(.clk(clk), .reset(reset | bus_init),
-		// config
-		.uart_clk(uart_clk),
-		.twostop(1'b1),
+	wire or_err, fr_err, p_err;
+	wire error = or_err | fr_err | p_err;
+	wire rcvr_done, xmit_rdy;
+	uart1402 uart1402(.clk(clk), .reset(init),
+		.tr(bus_d[7:0]),
+		.thrl(clk_xbuf),
+		.tro(serial_out_raw),
+		.trc(uart_clk),
+		.thre(xmit_rdy),
 
-		// serial
-		.tx(serial_out_raw),
-		.rx(serial_in),
+		.rr(rd),
+		.rrd(1'b0),
+		.ri(serial_in),
+		.rrc(uart_clk),
+		.dr(rcvr_done),
+		.drr(rbuf_to_bus | rdr_enable),
+		.oe(or_err),
+		.fe(fr_err),
+		.pe(p_err),
+		.sfd(1'b0),
 
-		.tx_data(bus_d[7:0]),
-		.tx_data_clr(clk_pun_buf),
-		.tx_data_set(clk_pun_buf),
-		.tx_done(pun_ready),
+		.crl(1'b1),
+		// jumpers
+		.pi(1'b1),	// no parity
+		.epe(1'b1),	// even parity
+		.sbs(1'b0),	// one stop bit
+		.wls1(1'b1),	// 8 data bits
+		.wls2(1'b1)
+	);
 
-		.rx_data(rd),
-		.rx_data_clr(rdr_buf_to_bus),
-		.rx_active(rdr_active),
-		.rx_done(rdr_done));
 endmodule

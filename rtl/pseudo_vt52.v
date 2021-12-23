@@ -1,8 +1,8 @@
 `default_nettype none
 
 module pseudo_vt52(
-	input wire clk,
-	input wire reset,
+	input wire clock50,
+	input wire async_reset,
 	input wire invert_video,
 	input wire bell_inverts,
 
@@ -23,14 +23,26 @@ module pseudo_vt52(
 	input wire ps2_clk,
 	input wire ps2_data
 );
-	wire clock50 = clk;
+	/* need 54mhz clock for 720x480@60hz */
+	wire clock54, locked;
+	pll54 pll54(
+	  .refclk(clock50),
+	  .rst(async_reset),
+
+	  .outclk_0(clock54),
+	  .locked(locked)
+	);
+	wire reset;
+	syncreset syncreset(clock54, async_reset | ~locked, reset);
+	wire rx;
+	syncsignal rxsyn(clock54, UART_RX, rx);
 
 	wire [10:0] screenaddr;
 	addressmap addrmap(screenX, screenY, screenaddr);
 
-	reg [7:0] wrdata;
-	wire [7:0] data_a;
-	wire [7:0] data_b;
+	reg [6:0] wrdata;
+	wire [6:0] data_a;
+	wire [6:0] data_b;
 	reg wren = 0;
 
 	/* VT52-like terminal */
@@ -43,6 +55,7 @@ module pseudo_vt52(
 	reg cadX = 0;
 	reg cadY = 0;
 	reg esc = 0;
+	reg graph = 0;
 	reg scroll = 0;
 	reg clrline = 1;
 	reg clrscreen = 1;
@@ -54,7 +67,7 @@ module pseudo_vt52(
 	wire [4:0] curYDEC = curY == 0 ? curY : curY-1;
 	wire [6:0] curY_mem = curY+topline <= 23 ? curY+topline : curY+topline-24;
 	wire [4:0] screenYINC = screenY == 23 ? 0 : screenY + 1;
-	always @(posedge clk or posedge reset) begin
+	always @(posedge clock54) begin
 		if(reset) begin
 			curX <= 0;
 			curY <= 0;
@@ -64,6 +77,7 @@ module pseudo_vt52(
 			cadX <= 0;
 			cadY <= 0;
 			esc <= 0;
+			graph <= 0;
 			scroll <= 0;
 			clrline <= 1;
 			clrscreen <= 1;
@@ -85,45 +99,47 @@ module pseudo_vt52(
 					cadX <= 0;
 				end else if(esc) begin
 					case(rx_data)
-					8'o101: curY <= curYDEC;
-					8'o102: curY <= curYINC;
-					8'o103: curX <= curXINC;
-					8'o104: curX <= curXDEC;
-					8'o110: begin
+					7'o101: curY <= curYDEC;
+					7'o102: curY <= curYINC;
+					7'o103: curX <= curXINC;
+					7'o104: curX <= curXDEC;
+					7'o106: graph <= 1;
+					7'o107: graph <= 0;
+					7'o110: begin
 						curX <= 0;
 						curY <= 0;
 					end
-					8'o111: begin
+					7'o111: begin
 						curY <= curYDEC;
 						if(curY == 0) begin
 							scroll <= 1;
 							topline <= topline == 0 ? 23 : topline-1;
 						end
 					end
-					8'o112: begin
+					7'o112: begin
 						screenX <= curX;
 						screenY <= curY_mem;
 						clrline <= 1;
 						clrscreen <= 1;
 					end
-					8'o113: begin
+					7'o113: begin
 						screenX <= curX;
 						screenY <= curY_mem;
 						clrline <= 1;
 					end
-					8'o131: cadY <= 1;
+					7'o131: cadY <= 1;
 					endcase
 					esc <= 0;
 				end else if(rx_data <'o40) begin
 					case(rx_data)
-					8'o007: bell <= ~bell;
-					8'o010: curX <= curXDEC;
-					8'o011:
+					7'o007: bell <= ~bell;
+					7'o010: curX <= curXDEC;
+					7'o011:
 						if(curX < 72)
 							curX <= {curX[6:3], 3'b000} + 8;
 						else
 							curX <= curXINC;
-					8'o012: begin
+					7'o012: begin
 						curY <= curYINC;
 						// scroll down
 						if(curY == 23) begin
@@ -131,12 +147,15 @@ module pseudo_vt52(
 							topline <= topline == 23 ? 0 : topline+1;
 						end
 					end
-					8'o015: curX <= 0;
-					8'o033: esc <= 1;
+					7'o015: curX <= 0;
+					7'o033: esc <= 1;
 					endcase
 				end else if(rx_data != 'o177) begin
 					wren <= 1;
-					wrdata <= rx_data;
+					if(graph & (rx_data >= 'o136))
+						wrdata <= rx_data - 'o137;
+					else
+						wrdata <= rx_data;
 					screenX <= curX;
 					screenY <= curY_mem;
 					curX <= curXINC;
@@ -181,7 +200,7 @@ module pseudo_vt52(
 	wire	[10:0]  address_b;
 	mem screenmem(.address_a(screenaddr),
 		.address_b(address_b),
-		.clock(clk),
+		.clock(clock54),
 		.data_a(wrdata),
 		.data_b(0),
 		.wren_a(wren),
@@ -189,19 +208,10 @@ module pseudo_vt52(
 		.q_a(data_a),
 		.q_b(data_b));
 
-	/* need 54mhz clock for 720x480@60hz */
-	wire clock54, locked;
-	pll54 pll54(
-	  .refclk(clock50),
-	  .rst(reset),
-
-	  .outclk_0(clock54),
-	  .locked(locked)
-	);
 	/* video signal generator */
 	videogen videogen(
 		.clock      (clock54),
-		.reset      (~locked),
+		.reset      (reset),
 
 		// terminal screen
 		.curX(curX),
@@ -221,11 +231,11 @@ module pseudo_vt52(
 
 	/* HDMI config */
 	I2C_HDMI_Config #(
-	  .CLK_Freq (50000000), // 50MHz
+	  .CLK_Freq (54000000), // 54MHz
 	  .I2C_Freq (20000)    // 20kHz for i2c clock
 	)
 	I2C_HDMI_Config (
-	  .iCLK        (clock50),
+	  .iCLK        (clock54),
 	  .iRST_N      (~reset),
 	  .I2C_SCLK    (I2C_SCL),
 	  .I2C_SDAT    (I2C_SDA),
@@ -242,40 +252,48 @@ module pseudo_vt52(
 	/* UART */
 	wire uart_clk;
 	wire tx_send;
-	wire tx_clr = 0;
-	wire tx_done;
 	wire [7:0] rx_data_8b;
-	wire [7:0] rx_data = rx_data_8b[6:0];
-	wire rx_active;
+	wire [6:0] rx_data = rx_data_8b[6:0];
 	wire rx_done;
-	clkdiv #(50000000, 9600*16) uart_clkdiv(clock50, uart_clk);
-	uart uart(.clk(clock50), .reset(reset),
-		.uart_clk(uart_clk),
-		.twostop(1'b0),
+	clkdiv #(54000000, 9600*16) uart_clkdiv(clock54, uart_clk);
+	wire tx_done;
+	wire tre;
+	uart1402 uart1402(.clk(clock54), .reset(reset),
+		.tr(kbd_ascii),
+		.thrl(tx_send),
+		.tro(UART_TX),
+		.trc(uart_clk),
+		.thre(tx_done),
+		.tre(tre),
 
-		.tx(UART_TX),
-		.tx_data(kbd_ascii),
-		.tx_data_clr(tx_clr),
-		.tx_data_set(tx_send),
-		.tx_done(tx_done),
+		.rr(rx_data_8b),
+		.rrd(1'b0),
+		.ri(rx),
+		.rrc(uart_clk),
+		.dr(rx_done),
+		.drr(gotchar),
+//		.oe(or_err),
+//		.fe(fr_err),
+//		.pe(p_err),
+		.sfd(1'b0),
 
-		.rx(UART_RX),
-		.rx_data_clr(1'b0),
-		.rx_data(rx_data_8b),
-		.rx_active(rx_active),
-		.rx_done(rx_done)
+		.crl(1'b1),
+		// jumpers
+		.pi(1'b1),	// no parity
+		.epe(1'b1),	// even parity
+		.sbs(1'b0),	// one stop bit
+		.wls1(1'b1),	// 8 data bits
+		.wls2(1'b1)
 	);
 
 	wire gotchar;
-	edgedet recv(clk, reset, rx_done, gotchar);
-
-
+	edgedet2 recv(clock54, reset, rx_done, gotchar);
 
 
 	/* PS/2 keyboard */
 	wire [7:0] kbd_data;
 	wire kbd_done;
-	ps2_rx ps2_rx(.clk(clk), .reset(reset),
+	ps2_rx ps2_rx(.clk(clock54), .reset(reset),
 		.ps2_clk(ps2_clk),
 		.ps2_data(ps2_data),
 		.data(kbd_data),
@@ -283,7 +301,7 @@ module pseudo_vt52(
 
 	wire [6:0] kbd_ascii;
 	kbdhandler kbdhandler(
-		.clk(clk),
+		.clk(clock54),
 		.reset(reset),
 		.newdata(kbd_done),
 		.scancode(kbd_data),

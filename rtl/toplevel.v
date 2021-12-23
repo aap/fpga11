@@ -49,6 +49,12 @@ module toplevel(
 	//////////// GPIO, GPIO connect to GPIO Default //////////
 	inout 		    [35:0]		GPIO
 );
+	wire clock50 = CLOCK_50_B5B;
+	wire clk = clock50;
+	wire reset;
+	syncreset syncreset(clock50, ~CPU_RESET_n, reset);
+
+/*
 //	reg [7:0] resetsync = ~0;
 	reg resetsync_n = 0;
 	always @(posedge clk) begin
@@ -62,8 +68,7 @@ module toplevel(
 	wire reset_n = resetsync_n;
 //	wire reset_n = CPU_RESET_n;
 	wire reset = ~reset_n;
-	wire clock50 = CLOCK_50_B5B;
-	wire clk = clock50;
+*/
 
 	reg [11:0] columns;
 	reg [2:0] switch_rows;
@@ -287,7 +292,7 @@ module toplevel(
 	wire [4:0] ps_flags;
 	wire [2:0] cpu_status;
 
-	assign LEDR[8:0] = SW[0] ? bupp : pupp;
+//	assign LEDR[8:0] = SW[0] ? bupp : pupp;
 	assign LEDG[7:0] = {cpu_status, ps_flags};
 
 	// power up machine only after we've read
@@ -350,14 +355,14 @@ module toplevel(
 	wire serial_vt_in = serial_cnsl_out;
 
 
-	assign LEDR[9] = hdmi_ready;
+//	assign LEDR[9] = hdmi_ready;
 
 	// control video inversion with switch
 	wire invert = SW[1];
 	wire bell_inverts = SW[2];
 
 	wire hdmi_ready;
-	pseudo_vt52 vt(.clk(clk), .reset(reset),
+	pseudo_vt52 vt(.clock50(clk), .async_reset(~CPU_RESET_n),
 		.invert_video(invert),
 		.bell_inverts(bell_inverts),
 

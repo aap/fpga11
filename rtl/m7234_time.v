@@ -418,7 +418,7 @@ wire grant = 0;	// ? grant_br?
 	reg [7:4] br;
 	wire brq4 = ~br[7] & ~br[6] & ~br[5] & br[4] & ~ps_pl[7];
 	wire brq5 = ~br[7] & ~br[6] & br[5] & (ps_pl[7]&ps_pl[6] | ps_pl[7]&ps_pl[5]);
-	wire brq6 = ~br[7] & br[6] & ~(ps_pl[6] & ps_pl[5]);
+	wire brq6 = ~br[7] & br[6] & ~(ps_pl[7] & ps_pl[6]);
 	wire brq7 = br[7] & ~(ps_pl[7] & ps_pl[6] & ps_pl[5]);
 	assign brq =  brq4 | brq5 | brq6 | brq7;
 	always @(posedge clk) begin

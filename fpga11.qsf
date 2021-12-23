@@ -270,6 +270,9 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO[32]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO[33]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO[34]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO[35]
+set_global_assignment -name VERILOG_FILE rtl/unibus.v
+set_global_assignment -name VERILOG_FILE rtl/uart1402.v
+set_global_assignment -name VERILOG_FILE rtl/kw11.v
 set_global_assignment -name VERILOG_FILE rtl/toplevel.v
 set_global_assignment -name VERILOG_FILE rtl/dl11.v
 set_global_assignment -name VERILOG_FILE rtl/m7237_kj11.v
@@ -290,9 +293,7 @@ set_global_assignment -name VERILOG_FILE rtl/m7232_uword.v
 set_global_assignment -name VERILOG_FILE rtl/m7231_data.v
 set_global_assignment -name VERILOG_FILE rtl/kd11a.v
 set_global_assignment -name VERILOG_FILE rtl/ps2_rx.v
-set_global_assignment -name VERILOG_FILE rtl/uart.v
 set_global_assignment -name SDC_FILE fpga11.SDC
-set_global_assignment -name VERILOG_FILE rtl/vgaHdmi.v
 set_global_assignment -name VERILOG_FILE rtl/I2C_WRITE_WDATA.v
 set_global_assignment -name VERILOG_FILE rtl/I2C_HDMI_Config.v
 set_global_assignment -name VERILOG_FILE rtl/I2C_Controller.v
@@ -300,7 +301,5 @@ set_global_assignment -name QIP_FILE mem.qip
 set_global_assignment -name QIP_FILE pll54.qip
 set_global_assignment -name SIP_FILE pll54.sip
 set_global_assignment -name VERILOG_FILE rtl/alu74181.v
-set_global_assignment -name QIP_FILE unibus_ram.qip
-set_global_assignment -name QIP_FILE unibus_ram32k.qip
 set_global_assignment -name QIP_FILE unibus_ram128k.qip
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
